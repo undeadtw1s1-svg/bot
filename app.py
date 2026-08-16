@@ -5,11 +5,15 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from aiogram import Bot
-from dotenv import load_dotenv
 import uvicorn
 from database import init_db, get_user_config_db, update_user_settings_db
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
