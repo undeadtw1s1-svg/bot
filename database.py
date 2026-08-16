@@ -1,9 +1,12 @@
 import os
 import json
 import asyncio
-from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 USE_POSTGRES = False
@@ -28,34 +31,40 @@ def _save_json(data):
 
 async def init_db():
     global pool, USE_POSTGRES
+    if pool is not None:
+        return
     if DATABASE_URL:
         try:
             import asyncpg
             
-            # Поддержка облачного PostgreSQL / Supabase
             pool = await asyncpg.create_pool(
                 dsn=DATABASE_URL, 
                 min_size=1, 
                 max_size=5, 
                 timeout=10.0,
-                statement_cache_size=0  # Обязательно для совместимости с Supabase / PgBouncer
+                statement_cache_size=0
             )
             
-            async with pool.acquire() as conn:
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS user_settings (
-                        user_id BIGINT PRIMARY KEY,
-                        queries TEXT[] DEFAULT '{}',
-                        stop_words TEXT[] DEFAULT '{}',
-                        search_limit INT DEFAULT 3
-                    );
-                    CREATE TABLE IF NOT EXISTS seen_ads (
-                        user_id BIGINT,
-                        ad_id VARCHAR(64),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY (user_id, ad_id)
-                    );
-                """)
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS user_settings (
+                            user_id BIGINT PRIMARY KEY,
+                            queries TEXT[] DEFAULT '{}',
+                            stop_words TEXT[] DEFAULT '{}',
+                            search_limit INT DEFAULT 3
+                        );
+                        CREATE TABLE IF NOT EXISTS seen_ads (
+                            user_id BIGINT,
+                            ad_id VARCHAR(64),
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            PRIMARY KEY (user_id, ad_id)
+                        );
+                    """)
+            except Exception as tbl_err:
+                # Игнорируем гонку создания таблиц, если они уже существуют в Postgres
+                print(f"[database] Таблицы уже инициализированы или заняты: {tbl_err}")
+
             USE_POSTGRES = True
             print("[database] Успешно подключено к PostgreSQL / Supabase")
             return
