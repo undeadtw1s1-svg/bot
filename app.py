@@ -7,24 +7,23 @@ from pydantic import BaseModel
 from aiogram import Bot
 from dotenv import load_dotenv
 import uvicorn
-from database import init_db, get_user_config_db, update_user_settings_db, add_seen_ads_db
-from parser import scrape_kufar
+from database import init_db, get_user_config_db, update_user_settings_db
 
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8724509159:AAHYfiKZEQMd49_sF1ItmV4AnUigx23ckDg")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI()
 
 class BypassNgrokMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Гарантируем подключение к Supabase перед обработкой запроса
         await init_db()
         response = await call_next(request)
         response.headers["ngrok-skip-browser-warning"] = "true"
         return response
 
 app.add_middleware(BypassNgrokMiddleware)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 class SettingsPayload(BaseModel):
     user_id: int
@@ -34,7 +33,7 @@ class SettingsPayload(BaseModel):
 
 @app.get("/")
 async def get_index():
-    return FileResponse("static/index.html")
+    return FileResponse(os.path.join(BASE_DIR, "static", "index.html"))
 
 @app.get("/api/settings/{user_id}")
 async def get_settings(user_id: int):
@@ -57,14 +56,6 @@ async def save_settings(data: SettingsPayload):
 
     added_queries = [q for q in new_queries if q not in old_queries]
     if added_queries and BOT_TOKEN:
-        seen_to_add = []
-        for q in added_queries:
-            initial_ads = await scrape_kufar(q, limit=10, stop_words=clean_stop_words)
-            for ad in initial_ads:
-                seen_to_add.append(str(ad["id"]))
-        
-        await add_seen_ads_db(data.user_id, seen_to_add)
-
         try:
             bot = Bot(token=BOT_TOKEN)
             q_list = ", ".join([f"<code>{q}</code>" for q in added_queries])
